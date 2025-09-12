@@ -29,12 +29,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { UserCheck, Clock, Download, Plus, Upload, Edit, Trash2 } from "lucide-react";
+import { UserCheck, Clock, Plus, Edit, Trash2 } from "lucide-react";
 import { useAuth } from "@/context/AuthProvider";
 import { Seo } from "@/components/Seo";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { exportToCSV, parseCSV, exportToPDF } from "@/utils/csvUtils";
+import { FileUpload, FileOperationButton } from "@/components/ui/file-upload";
 
 interface User {
   id: string;
@@ -122,6 +123,10 @@ const Users = () => {
   const handleImportCSV = async (file: File) => {
     try {
       const data = await parseCSV(file);
+      
+      // Add a small delay to simulate processing time and show the progress animation
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
       // Import users logic here
       toast({ title: "Success", description: `Imported ${data.length} users` });
       setImportOpen(false);
@@ -197,7 +202,7 @@ const Users = () => {
     }
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
     const exportData = users.map(user => ({
       email: user.email,
       roles: user.roles.join(", "),
@@ -205,10 +210,14 @@ const Users = () => {
       joined: new Date(user.created_at).toLocaleDateString(),
       last_sign_in: user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : "Never"
     }));
+    
+    // Add a small delay to simulate processing time and show the progress animation
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
     exportToCSV(exportData, "users");
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     const exportData = users.map(user => ({
       "Email": user.email,
       "Roles": user.roles.join(", "),
@@ -216,6 +225,10 @@ const Users = () => {
       "Joined": new Date(user.created_at).toLocaleDateString(),
       "Last Sign In": user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : "Never"
     }));
+    
+    // Add a small delay to simulate processing time and show the progress animation
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    
     exportToPDF(exportData, "Users Report");
   };
 
@@ -296,7 +309,6 @@ const Users = () => {
             <Dialog open={importOpen} onOpenChange={setImportOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline">
-                  <Upload className="h-4 w-4 mr-2" />
                   Import CSV
                 </Button>
               </DialogTrigger>
@@ -310,13 +322,11 @@ const Users = () => {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label>CSV File</Label>
-                    <Input
-                      type="file"
+                    <FileUpload
+                      onFileSelect={handleImportCSV}
                       accept=".csv"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleImportCSV(file);
-                      }}
+                      buttonText="Select CSV File"
+                      icon="upload"
                     />
                   </div>
                   <div className="text-sm text-muted-foreground">
@@ -360,14 +370,18 @@ const Users = () => {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-            <Button variant="outline" onClick={handleExportCSV}>
-              <Download className="h-4 w-4 mr-2" />
-              Export CSV
-            </Button>
-            <Button variant="outline" onClick={handleExportPDF}>
-              <Download className="h-4 w-4 mr-2" />
-              Export PDF
-            </Button>
+            <FileOperationButton
+              onClick={handleExportCSV}
+              buttonText="Export CSV"
+              icon="download"
+              variant="outline"
+            />
+            <FileOperationButton
+              onClick={handleExportPDF}
+              buttonText="Export PDF"
+              icon="download"
+              variant="outline"
+            />
           </div>
         </div>
       </header>

@@ -32,24 +32,38 @@ export const parseCSV = (file: File): Promise<any[]> => {
     reader.onload = (e) => {
       try {
         const text = e.target?.result as string;
-        const lines = text.split('\n').filter(line => line.trim());
+        // Handle different line endings (\r\n, \n, \r)
+        const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(line => line.trim());
+        
         if (lines.length < 2) {
           reject(new Error('CSV must have at least a header and one data row'));
           return;
         }
         
-        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-        const data = lines.slice(1).map(line => {
+        // Process headers - convert to lowercase for case-insensitive matching
+        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, '').toLowerCase());
+        console.log('CSV Headers:', headers);
+        
+        const data = lines.slice(1).map((line, lineIndex) => {
           const values = line.split(',').map(v => v.trim().replace(/"/g, ''));
           const obj: any = {};
+          
           headers.forEach((header, index) => {
-            obj[header] = values[index] || '';
+            // Only set the value if it exists in the CSV
+            if (index < values.length) {
+              obj[header] = values[index] || '';
+            } else {
+              obj[header] = '';
+            }
           });
+          
+          console.log(`Parsed row ${lineIndex + 1}:`, obj);
           return obj;
         });
         
         resolve(data);
       } catch (error) {
+        console.error('CSV parsing error:', error);
         reject(error);
       }
     };

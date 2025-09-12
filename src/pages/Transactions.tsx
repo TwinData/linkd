@@ -11,9 +11,10 @@ import { useAuth } from "@/context/AuthProvider";
 import { Seo } from "@/components/Seo";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
-import { Pencil, Trash, ArrowUp, ArrowDown, Search, Filter, ChevronUp, ChevronDown, Trash2, CalendarIcon } from "lucide-react";
+import { Pencil, Trash, Search, Filter, ChevronUp, ChevronDown, Trash2, CalendarIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { exportToCSV, parseCSV, exportToPDF } from "@/utils/csvUtils";
+import { FileUpload, FileOperationButton } from "@/components/ui/file-upload";
 import { calculateTransactionFee } from "@/utils/transactionCharges";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { Progress } from "@/components/ui/progress";
@@ -524,7 +525,7 @@ const Transactions = () => {
     }
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
     const exportData = txs.map(tx => ({
       client_name: clientsById[tx.client_id as string]?.name || "",
       date: new Date(tx.created_at as string).toLocaleDateString(),
@@ -535,10 +536,14 @@ const Transactions = () => {
       transaction_fee_kes: tx.transaction_fee_kes,
       payout_kes: tx.payout_kes
     }));
+    
+    // Add a small delay to simulate processing time and show the progress animation
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
     exportToCSV(exportData, "transactions");
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     const exportData = txs.map(tx => ({
       "Client Name": clientsById[tx.client_id as string]?.name || "",
       "Date": new Date(tx.created_at as string).toLocaleDateString(),
@@ -549,6 +554,10 @@ const Transactions = () => {
       "Fee (KES)": tx.transaction_fee_kes,
       "Payout (KES)": tx.payout_kes
     }));
+    
+    // Add a small delay to simulate processing time and show the progress animation
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    
     exportToPDF(exportData, "Transactions Report");
   };
 
@@ -696,7 +705,6 @@ const Transactions = () => {
             <Dialog open={openImport} onOpenChange={setOpenImport}>
               <DialogTrigger asChild>
                 <Button variant="outline">
-                  <ArrowDown className="h-4 w-4 mr-2" />
                   Import CSV
                 </Button>
               </DialogTrigger>
@@ -729,13 +737,11 @@ const Transactions = () => {
                     <>
                       <div className="space-y-2">
                         <Label>CSV File</Label>
-                        <Input
-                          type="file"
+                        <FileUpload
+                          onFileSelect={handleImportCSV}
                           accept=".csv"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) handleImportCSV(file);
-                          }}
+                          buttonText="Select CSV File"
+                          icon="upload"
                         />
                       </div>
                       <div className="text-sm text-muted-foreground">
@@ -865,14 +871,18 @@ const Transactions = () => {
                 </div>
               </DialogContent>
             </Dialog>
-            <Button variant="outline" onClick={handleExportCSV}>
-              <ArrowUp className="h-4 w-4 mr-2" />
-              Export CSV
-            </Button>
-            <Button variant="outline" onClick={handleExportPDF}>
-              <ArrowUp className="h-4 w-4 mr-2" />
-              Export PDF
-            </Button>
+            <FileOperationButton
+              onClick={handleExportCSV}
+              buttonText="Export CSV"
+              icon="download"
+              variant="outline"
+            />
+            <FileOperationButton
+              onClick={handleExportPDF}
+              buttonText="Export PDF"
+              icon="download"
+              variant="outline"
+            />
             <Button variant="secondary" onClick={() => navigate("/dashboard")}>Back to Dashboard</Button>
           </div>
         </div>
