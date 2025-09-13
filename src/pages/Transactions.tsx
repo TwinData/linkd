@@ -62,7 +62,7 @@ const Transactions = () => {
   // Pagination and filtering state
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
-  const [sortBy, setSortBy] = useState<"client_name" | "created_at" | "amount_kd" | "payout_kes">("created_at");
+  const [sortBy, setSortBy] = useState<"amount_kd" | "client_name" | "created_at" | "payout_kes" | "amount_kes">("created_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [filterBy, setFilterBy] = useState<"all" | "M-PESA Send Money" | "M-PESA Paybill" | "Bank Transfer" | "Other">("all");
   const recordsPerPage = 50;
@@ -161,6 +161,8 @@ const Transactions = () => {
         comparison = Number(a.amount_kd || 0) - Number(b.amount_kd || 0);
       } else if (sortBy === "payout_kes") {
         comparison = Number(a.payout_kes || a.amount_kes || 0) - Number(b.payout_kes || b.amount_kes || 0);
+      } else if (sortBy === "amount_kes") {
+        comparison = Number(a.amount_kes || 0) - Number(b.amount_kes || 0);
       }
       
       return sortOrder === "asc" ? comparison : -comparison;
@@ -176,7 +178,7 @@ const Transactions = () => {
 
   const totalPages = Math.ceil(filteredAndSortedTransactions.length / recordsPerPage);
 
-  const handleSort = (column: "client_name" | "created_at" | "amount_kd" | "payout_kes") => {
+  const handleSort = (column: "client_name" | "created_at" | "amount_kd" | "payout_kes" | "amount_kes") => {
     if (sortBy === column) {
       setSortOrder(sortOrder === "asc" ? "desc" : "asc");
     } else {
@@ -201,9 +203,13 @@ const Transactions = () => {
     const rate = parseFloat(formData.rate_kes_per_kd) || 0;
     const fee = parseFloat(formData.transaction_fee_kes) || 0;
     
-    const finalPayout = (amount * rate) - fee;
+    // Calculate total amount
+    const totalAmount = amount * rate;
     
-    return { finalPayout };
+    // Add fee to get final payout
+    const finalPayout = totalAmount + fee;
+    
+    return { finalPayout, totalAmount };
   };
 
   const handleSaveTransaction = async () => {
@@ -215,17 +221,32 @@ const Transactions = () => {
     const { finalPayout } = calculatePayout();
     
     try {
-      const { error } = await supabase.from("transactions").insert({
+      if (!user?.id) {
+        throw new Error("User ID is required for creating transactions");
+      }
+      
+      // Calculate values
+      const amount_kd = parseFloat(formData.amount_kd);
+      const rate_kes_per_kd = parseFloat(formData.rate_kes_per_kd);
+      const transaction_fee_kes = parseFloat(formData.transaction_fee_kes) || 0;
+      const amount_kes = amount_kd * rate_kes_per_kd;
+      
+      // Create transaction data with all required fields
+      const transactionData = {
         client_id: selectedClient,
-        owner_id: user?.id,
-        amount_kd: parseFloat(formData.amount_kd),
-        rate_kes_per_kd: parseFloat(formData.rate_kes_per_kd),
-        amount_kes: parseFloat(formData.amount_kd) * parseFloat(formData.rate_kes_per_kd),
-        type: formData.type,
-        transaction_fee_kes: parseFloat(formData.transaction_fee_kes) || 0,
-        payout_kes: finalPayout,
-        created_at: formData.date.toISOString()
-      });
+        owner_id: user.id,
+        amount_kd: amount_kd,
+        rate_kes_per_kd: rate_kes_per_kd,
+        amount_kes: amount_kes,
+        type: formData.type || "M-PESA Send Money",
+        transaction_fee_kes: transaction_fee_kes,
+        notes: null,
+        reference: null,
+        status: "pending" as const
+      };
+      
+      console.log('Creating transaction:', transactionData);
+      const { error } = await supabase.from("transactions").insert(transactionData);
 
       if (error) throw error;
 
@@ -457,19 +478,29 @@ const Transactions = () => {
           
           const finalPayout = (amount * rate) - fee;
           
+          // Check if user is available
+          if (!user?.id) {
+            throw new Error("User ID is required for creating transactions");
+          }
+          
+          // Calculate amount_kes
+          const amount_kes = amount * rate;
+          
+          // Create transaction data with required fields
           const transactionData = {
             client_id: client.id,
-            owner_id: user?.id,
+            owner_id: user.id,
             amount_kd: amount,
             rate_kes_per_kd: rate,
-            amount_kes: amount * rate,
+            amount_kes: amount_kes,
             type: txData.type?.trim() || "M-PESA Send Money",
             transaction_fee_kes: fee,
-            payout_kes: finalPayout,
             notes: txData.notes?.trim() || null,
-            reference: txData.reference?.trim() || null
+            reference: txData.reference?.trim() || null,
+            status: "pending" as const
           };
           
+          console.log('Importing transaction:', transactionData);
           const { error } = await supabase.from("transactions").insert(transactionData);
           
           if (error) {
@@ -685,7 +716,7 @@ const Transactions = () => {
                       </Popover>
                     </div>
                     <div className="space-y-2">
-                      <Label>Calculated Payout (KES)</Label>
+                      <Label>Calculated Payout (Including Fee) (KES)</Label>
                       <Input 
                         type="number" 
                         placeholder="0.00"
@@ -854,7 +885,7 @@ const Transactions = () => {
                       </Popover>
                     </div>
                     <div className="space-y-2">
-                      <Label>Calculated Payout (KES)</Label>
+                      <Label>Calculated Payout (Including Fee) (KES)</Label>
                       <Input 
                         type="number" 
                         placeholder="0.00"
@@ -1007,13 +1038,23 @@ const Transactions = () => {
                         onClick={() => handleSort("payout_kes")}
                       >
                         <div className="flex items-center gap-1">
-                          Payout
+                          Payout (Including Fee)
                           {sortBy === "payout_kes" && (
                             sortOrder === "asc" ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
                           )}
                         </div>
                       </TableHead>
-                      <TableHead>Paid to Client</TableHead>
+                      <TableHead 
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => handleSort("amount_kes")}
+                      >
+                        <div className="flex items-center gap-1">
+                          Total Amount (KES)
+                          {sortBy === "amount_kes" && (
+                            sortOrder === "asc" ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+                          )}
+                        </div>
+                      </TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1047,8 +1088,8 @@ const Transactions = () => {
                           <TableCell>{Number(t.rate_kes_per_kd).toFixed(2)}</TableCell>
                           <TableCell>{t.type ?? "—"}</TableCell>
                           <TableCell>{formatCurrency(Number(t.transaction_fee_kes), "KES")}</TableCell>
-                          <TableCell className="font-medium">{formatCurrency(Number(t.payout_kes ?? t.amount_kes), "KES")}</TableCell>
-                          <TableCell className="font-medium">{formatCurrency((Number(t.amount_kd) || 0) * (Number(t.rate_kes_per_kd) || 0), "KES")}</TableCell>
+                          <TableCell className="font-medium">{formatCurrency(Number(t.payout_kes), "KES")}</TableCell>
+                          <TableCell className="font-medium">{formatCurrency(Number(t.amount_kes), "KES")}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1">
                               <Button variant="outline" size="sm" onClick={() => handleEditTransaction(t)} aria-label="Edit">
