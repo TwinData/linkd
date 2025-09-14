@@ -22,7 +22,6 @@ interface FloatDeposit {
   total_kes: number;
   rate: number;
   profit: number;
-  owner_id: string;
 }
 
 export default function FloatDeposits() {
@@ -33,7 +32,6 @@ export default function FloatDeposits() {
     transaction_fee: "",
     sarah_share_percentage: "",
     rate: "",
-    profit: "",
   });
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -53,19 +51,13 @@ export default function FloatDeposits() {
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) throw new Error("Not authenticated");
-
       const { error } = await supabase
         .from("float_deposits")
         .insert({
-          ...data,
-          owner_id: user.user.id,
           total_kd: parseFloat(data.total_kd),
           transaction_fee: parseFloat(data.transaction_fee || "0"),
           sarah_share_percentage: parseFloat(data.sarah_share_percentage),
           rate: parseFloat(data.rate),
-          profit: parseFloat(data.profit || "0"),
         });
 
       if (error) throw error;
@@ -90,7 +82,6 @@ export default function FloatDeposits() {
           transaction_fee: parseFloat(data.transaction_fee || "0"),
           sarah_share_percentage: parseFloat(data.sarah_share_percentage),
           rate: parseFloat(data.rate),
-          profit: parseFloat(data.profit || "0"),
         })
         .eq("id", id);
 
@@ -132,7 +123,6 @@ export default function FloatDeposits() {
       transaction_fee: "",
       sarah_share_percentage: "",
       rate: "",
-      profit: "",
     });
   };
 
@@ -143,7 +133,6 @@ export default function FloatDeposits() {
       transaction_fee: deposit.transaction_fee.toString(),
       sarah_share_percentage: deposit.sarah_share_percentage.toString(),
       rate: deposit.rate.toString(),
-      profit: deposit.profit.toString(),
     });
     setIsDialogOpen(true);
   };
@@ -204,7 +193,7 @@ export default function FloatDeposits() {
                 </div>
                 
                 <div>
-                  <Label htmlFor="transaction_fee">Transaction Fee</Label>
+                  <Label htmlFor="transaction_fee">Transaction Fee (KD)</Label>
                   <Input
                     id="transaction_fee"
                     type="number"
@@ -239,13 +228,13 @@ export default function FloatDeposits() {
                 </div>
                 
                 <div>
-                  <Label htmlFor="profit">Profit</Label>
+                  <Label htmlFor="profit">Profit (Auto-calculated)</Label>
                   <Input
                     id="profit"
-                    type="number"
-                    step="0.01"
-                    value={formData.profit}
-                    onChange={(e) => setFormData({ ...formData, profit: e.target.value })}
+                    type="text"
+                    value="Calculated automatically (KES over 100,000)"
+                    disabled
+                    className="bg-muted text-muted-foreground"
                   />
                 </div>
                 
@@ -279,7 +268,7 @@ export default function FloatDeposits() {
                     <TableRow>
                       <TableHead>Date</TableHead>
                       <TableHead>Total KD</TableHead>
-                      <TableHead>Transaction Fee</TableHead>
+                      <TableHead>Transaction Fee (KD)</TableHead>
                       <TableHead>Sarah's Share (%)</TableHead>
                       <TableHead>Sarah's Total</TableHead>
                       <TableHead>Rate</TableHead>
