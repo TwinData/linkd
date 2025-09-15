@@ -77,7 +77,7 @@ const Transactions = () => {
     total: 0
   });
 
-  // Auto-calculate transaction fee when amount and rate change
+  // Auto-calculate transaction fee when amount, rate, or type change
   useEffect(() => {
     const calculateFee = async () => {
       const amountKd = parseFloat(formData.amount_kd);
@@ -85,7 +85,11 @@ const Transactions = () => {
       
       if (amountKd && rate) {
         const payoutAmount = amountKd * rate;
-        const fee = await calculateTransactionFee(payoutAmount);
+        // Map UI transaction type to the expected format for the fee calculation
+        const transactionType = formData.type === "M-PESA Paybill" ? "paybill" : "mpesa_send";
+        console.log(`Calculating fee for type: ${transactionType}`);
+        
+        const fee = await calculateTransactionFee(payoutAmount, transactionType);
         setFormData(prev => ({
           ...prev,
           transaction_fee_kes: fee.toString()
@@ -94,7 +98,7 @@ const Transactions = () => {
     };
 
     calculateFee();
-  }, [formData.amount_kd, formData.rate_kes_per_kd]);
+  }, [formData.amount_kd, formData.rate_kes_per_kd, formData.type]);
 
   useEffect(() => {
     if (!loading && !user) navigate("/", { replace: true });
@@ -466,25 +470,23 @@ const Transactions = () => {
             continue;
           }
           
-          // Calculate fee if not provided
-          let fee = 0;
-          if (txData.transaction_fee_kes && !isNaN(parseFloat(txData.transaction_fee_kes))) {
-            fee = parseFloat(txData.transaction_fee_kes);
-          } else {
-            // Auto-calculate fee based on payout amount
-            const payoutAmount = amount * rate;
-            fee = await calculateTransactionFee(payoutAmount);
-          }
-          
-          const finalPayout = (amount * rate) - fee;
-          
-          // Check if user is available
           if (!user?.id) {
             throw new Error("User ID is required for creating transactions");
           }
           
           // Calculate amount_kes
           const amount_kes = amount * rate;
+          
+          // Calculate fee based on transaction type
+          let fee = 0;
+          if (txData.transaction_fee_kes && !isNaN(parseFloat(txData.transaction_fee_kes))) {
+            fee = parseFloat(txData.transaction_fee_kes);
+          } else {
+            // Map transaction type to the expected format for fee calculation
+            const transactionType = txData.type?.trim() === "M-PESA Paybill" ? "paybill" : "mpesa_send";
+            console.log(`Import: Calculating fee for type: ${transactionType} and amount: ${amount_kes}`);
+            fee = await calculateTransactionFee(amount_kes, transactionType);
+          }
           
           // Create transaction data with required fields
           const transactionData = {
