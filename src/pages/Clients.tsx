@@ -17,8 +17,9 @@ import { Seo } from "@/components/Seo";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, Download, Pencil, Trash, Eye, MoreHorizontal, Search, Filter, ChevronUp, ChevronDown } from "lucide-react";
+import { Pencil, Trash, Eye, MoreHorizontal, Search, Filter, ChevronUp, ChevronDown } from "lucide-react";
 import { exportToCSV, parseCSV, exportToPDF } from "@/utils/csvUtils";
+import { FileUpload, FileOperationButton } from "@/components/ui/file-upload";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 
@@ -39,6 +40,7 @@ const Clients = () => {
 
   const [fetching, setFetching] = useState(true);
   const [clients, setClients] = useState<Client[]>([]);
+  const [clientsWithTransactions, setClientsWithTransactions] = useState<any[]>([]);
   const [txs, setTxs] = useState<Tx[]>([]);
   const [openAdd, setOpenAdd] = useState(false);
   const [openImport, setOpenImport] = useState(false);
@@ -59,19 +61,26 @@ const Clients = () => {
   }, [user, loading, navigate]);
 
   useEffect(() => {
-    const load = async () => {
-      if (!user || loading) return;
-      setFetching(true);
-      const [clRes, txRes] = await Promise.all([
-        supabase.from("clients").select("*").order("created_at", { ascending: false }),
-        supabase.from("transactions").select("*")
-      ]);
-      setClients(clRes.data || []);
-      setTxs((txRes.data as Tx[]) || []);
-      setFetching(false);
-    };
-    load();
-  }, [user, loading]);
+    fetchClients();
+    fetchClientsWithTransactions();
+  }, []);
+
+  const fetchClients = async () => {
+    if (!user || loading) return;
+    setFetching(true);
+    const [clRes, txRes] = await Promise.all([
+      supabase.from("clients").select("*").order("created_at", { ascending: false }),
+      supabase.from("transactions").select("*")
+    ]);
+    setClients(clRes.data || []);
+    setTxs((txRes.data as Tx[]) || []);
+    setFetching(false);
+  };
+
+  const fetchClientsWithTransactions = async () => {
+    const { data } = await supabase.from("client_transaction_summary").select("*").order("latest_transaction_date", { ascending: false, nullsLast: true });
+    setClientsWithTransactions(data || []);
+  };
 
   const stats = useMemo(() => {
     const map: Record<string, { count: number; totalKes: number; latest: string | null }> = {};
@@ -157,13 +166,22 @@ const Clients = () => {
     }
 
     try {
-      const { error } = await supabase.from("clients").insert({
+      // Create basic client data
+      // Using 'as any' to bypass TypeScript's type checking since we know the database schema is different
+      const clientData = {
         name: formData.name.trim(),
-        phone: formData.phone.trim() || null,
-        owner_id: user?.id
-      });
+        phone: formData.phone.trim() || null
+      } as any;
+      
+      console.log('Creating client:', clientData);
+      
+      // Try direct insert
+      const { error } = await supabase.from("clients").insert(clientData);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error creating client:', error);
+        throw error;
+      }
 
       toast({ title: "Success", description: "Client created successfully" });
       setOpenAdd(false);
@@ -173,6 +191,7 @@ const Clients = () => {
       const { data } = await supabase.from("clients").select("*").order("created_at", { ascending: false });
       setClients(data || []);
     } catch (error: any) {
+      console.error('Client creation error:', error);
       toast({ title: "Error", description: error.message, variant: "destructive" });
     }
   };
@@ -235,28 +254,72 @@ const Clients = () => {
 
   const handleImportCSV = async (file: File) => {
     try {
+      // Parse the CSV file
       const data = await parseCSV(file);
+      console.log('Parsed CSV data:', data);
+      
       // Validate and import clients
-      const validClients = data.filter(item => item.name);
-      for (const client of validClients) {
-        await supabase.from("clients").insert({
-          name: client.name,
-          phone: client.phone || null,
-          owner_id: user?.id
+      const validClients = data.filter(item => {
+        // Check if name exists in any case variation
+        return item.name || item.Name || item.NAME;
+      });
+      
+      console.log('Valid clients to import:', validClients);
+      
+      if (validClients.length === 0) {
+        toast({ 
+          title: "Error", 
+          description: "No valid clients found in CSV. Ensure your CSV has a 'name' column.", 
+          variant: "destructive" 
         });
+        return;
       }
-      toast({ title: "Success", description: `Imported ${validClients.length} clients` });
+      
+      // Process each client with a small delay to show progress
+      let successCount = 0;
+      for (const client of validClients) {
+        // Get name from any case variation
+        const name = client.name || client.Name || client.NAME;
+        // Get phone from any case variation
+        const phone = client.phone || client.Phone || client.PHONE;
+        // Get email from any case variation
+        const email = client.email || client.Email || client.EMAIL;
+        
+        console.log('Importing client:', { name, phone, email });
+        
+        // Using 'as any' to bypass TypeScript's type checking since we know the database schema is different
+        const clientData = {
+          name: name,
+          phone: phone || null,
+          email: email || null
+        } as any;
+        
+        const { error } = await supabase.from("clients").insert(clientData);
+        
+        if (!error) {
+          successCount++;
+        } else {
+          console.error('Error importing client:', error);
+        }
+        
+        // Small delay to make the progress visible
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      toast({ title: "Success", description: `Imported ${successCount} clients` });
       setOpenImport(false);
       
       // Refresh clients
       const { data: refreshedData } = await supabase.from("clients").select("*").order("created_at", { ascending: false });
       setClients(refreshedData || []);
     } catch (error: any) {
+      console.error('CSV import error:', error);
       toast({ title: "Error", description: error.message, variant: "destructive" });
     }
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
+    // Create export data
     const exportData = clients.map(client => ({
       name: client.name,
       phone: client.phone || "",
@@ -265,10 +328,16 @@ const Clients = () => {
       transactions_count: stats[client.id as string]?.count || 0,
       total_amount: stats[client.id as string]?.totalKes || 0
     }));
+    
+    // Add a small delay to simulate processing time and show the progress animation
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    // Export the CSV
     exportToCSV(exportData, "clients");
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
+    // Create export data
     const exportData = clients.map(client => ({
       "Name": client.name,
       "Phone": client.phone || "",
@@ -277,6 +346,11 @@ const Clients = () => {
       "Transactions": stats[client.id as string]?.count || 0,
       "Total Amount (KES)": stats[client.id as string]?.totalKes || 0
     }));
+    
+    // Add a small delay to simulate processing time and show the progress animation
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    
+    // Export the PDF
     exportToPDF(exportData, "Clients Report");
   };
 
@@ -337,7 +411,6 @@ const Clients = () => {
             <Dialog open={openImport} onOpenChange={setOpenImport}>
               <DialogTrigger asChild>
                 <Button variant="outline">
-                  <Upload className="h-4 w-4 mr-2" />
                   Import CSV
                 </Button>
               </DialogTrigger>
@@ -349,13 +422,11 @@ const Clients = () => {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label>CSV File</Label>
-                    <Input
-                      type="file"
+                    <FileUpload
+                      onFileSelect={handleImportCSV}
                       accept=".csv"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleImportCSV(file);
-                      }}
+                      buttonText="Select CSV File"
+                      icon="upload"
                     />
                   </div>
                   <div className="text-sm text-muted-foreground">
@@ -396,14 +467,18 @@ const Clients = () => {
                 </div>
               </DialogContent>
             </Dialog>
-            <Button variant="outline" onClick={handleExportCSV}>
-              <Download className="h-4 w-4 mr-2" />
-              Export CSV
-            </Button>
-            <Button variant="outline" onClick={handleExportPDF}>
-              <Download className="h-4 w-4 mr-2" />
-              Export PDF
-            </Button>
+            <FileOperationButton
+              onClick={handleExportCSV}
+              buttonText="Export CSV"
+              icon="download"
+              variant="outline"
+            />
+            <FileOperationButton
+              onClick={handleExportPDF}
+              buttonText="Export PDF"
+              icon="download"
+              variant="outline"
+            />
             <Button variant="secondary" onClick={() => navigate("/dashboard")}>Back to Dashboard</Button>
           </div>
         </div>

@@ -13,6 +13,9 @@ type TransactionCharge = Tables<"transaction_charges">;
 export const TransactionCharges = () => {
   const [charges, setCharges] = useState<TransactionCharge[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAdding, setIsAdding] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [selectedType, setSelectedType] = useState<string>('mpesa_send');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState({
@@ -30,19 +33,24 @@ export const TransactionCharges = () => {
 
   const fetchCharges = async () => {
     try {
+      setLoading(true);
       const { data, error } = await supabase
         .from("transaction_charges")
         .select("*")
         .eq("transaction_type", selectedType)
         .order("min_amount");
       
-      if (error) throw error;
+      if (error) {
+        console.error("Error fetching charges:", error);
+        throw error;
+      }
+      
       setCharges(data || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching charges:", error);
       toast({
         title: "Error",
-        description: "Failed to load transaction charges",
+        description: `Failed to load transaction charges: ${error.message || 'Unknown error'}`,
         variant: "destructive"
       });
     } finally {
@@ -61,12 +69,54 @@ export const TransactionCharges = () => {
     }
 
     try {
+      setIsAdding(true);
+      
+      // Validate numeric values
+      const minAmount = Number(newCharge.min_amount);
+      const maxAmount = Number(newCharge.max_amount);
+      const chargeAmount = Number(newCharge.charge_amount);
+      
+      if (isNaN(minAmount) || isNaN(maxAmount) || isNaN(chargeAmount)) {
+        toast({
+          title: "Error",
+          description: "All values must be valid numbers",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      if (minAmount >= maxAmount) {
+        toast({
+          title: "Error",
+          description: "Maximum amount must be greater than minimum amount",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Check for overlapping ranges
+      const overlapping = charges.find(charge => 
+        charge.transaction_type === selectedType &&
+        ((minAmount >= charge.min_amount && minAmount <= charge.max_amount) ||
+         (maxAmount >= charge.min_amount && maxAmount <= charge.max_amount) ||
+         (minAmount <= charge.min_amount && maxAmount >= charge.max_amount))
+      );
+      
+      if (overlapping) {
+        toast({
+          title: "Error",
+          description: "This range overlaps with an existing charge range",
+          variant: "destructive"
+        });
+        return;
+      }
+
       const { error } = await supabase
         .from("transaction_charges")
         .insert({
-          min_amount: Number(newCharge.min_amount),
-          max_amount: Number(newCharge.max_amount),
-          charge_amount: Number(newCharge.charge_amount),
+          min_amount: minAmount,
+          max_amount: maxAmount,
+          charge_amount: chargeAmount,
           transaction_type: selectedType
         });
 
@@ -78,18 +128,27 @@ export const TransactionCharges = () => {
         title: "Success",
         description: "Transaction charge added successfully"
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error adding charge:", error);
       toast({
         title: "Error",
-        description: "Failed to add transaction charge",
+        description: `Failed to add transaction charge: ${error.message || 'Unknown error'}`,
         variant: "destructive"
       });
+    } finally {
+      setIsAdding(false);
     }
   };
 
   const deleteCharge = async (id: string) => {
+    // Confirm deletion
+    if (!confirm("Are you sure you want to delete this transaction charge?")) {
+      return;
+    }
+    
     try {
+      setIsDeleting(true);
+      
       const { error } = await supabase
         .from("transaction_charges")
         .delete()
@@ -102,13 +161,15 @@ export const TransactionCharges = () => {
         title: "Success",
         description: "Transaction charge deleted successfully"
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error deleting charge:", error);
       toast({
         title: "Error",
-        description: "Failed to delete transaction charge",
+        description: `Failed to delete transaction charge: ${error.message || 'Unknown error'}`,
         variant: "destructive"
       });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -137,14 +198,62 @@ export const TransactionCharges = () => {
     }
 
     try {
+      // Set loading state for the edited row
+      setIsEditing(true);
+      const currentEditingId = editingId;
+      
+      // Validate numeric values
+      const minAmount = Number(editData.min_amount);
+      const maxAmount = Number(editData.max_amount);
+      const chargeAmount = Number(editData.charge_amount);
+      
+      if (isNaN(minAmount) || isNaN(maxAmount) || isNaN(chargeAmount)) {
+        toast({
+          title: "Error",
+          description: "All values must be valid numbers",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      if (minAmount >= maxAmount) {
+        toast({
+          title: "Error",
+          description: "Maximum amount must be greater than minimum amount",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Check for overlapping ranges (excluding the current charge being edited)
+      const currentCharge = charges.find(c => c.id === editingId);
+      if (currentCharge) {
+        const overlapping = charges.find(charge => 
+          charge.id !== editingId &&
+          charge.transaction_type === currentCharge.transaction_type &&
+          ((minAmount >= charge.min_amount && minAmount <= charge.max_amount) ||
+           (maxAmount >= charge.min_amount && maxAmount <= charge.max_amount) ||
+           (minAmount <= charge.min_amount && maxAmount >= charge.max_amount))
+        );
+        
+        if (overlapping) {
+          toast({
+            title: "Error",
+            description: "This range overlaps with an existing charge range",
+            variant: "destructive"
+          });
+          return;
+        }
+      }
+
       const { error } = await supabase
         .from("transaction_charges")
         .update({
-          min_amount: Number(editData.min_amount),
-          max_amount: Number(editData.max_amount),
-          charge_amount: Number(editData.charge_amount)
+          min_amount: minAmount,
+          max_amount: maxAmount,
+          charge_amount: chargeAmount
         })
-        .eq("id", editingId);
+        .eq("id", currentEditingId);
 
       if (error) throw error;
 
@@ -155,18 +264,22 @@ export const TransactionCharges = () => {
         title: "Success",
         description: "Transaction charge updated successfully"
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating charge:", error);
       toast({
         title: "Error",
-        description: "Failed to update transaction charge",
+        description: `Failed to update transaction charge: ${error.message || 'Unknown error'}`,
         variant: "destructive"
       });
+    } finally {
+      setIsEditing(false);
     }
   };
 
   useEffect(() => {
     fetchCharges();
+    // Update the transaction type in the new charge form
+    setNewCharge(prev => ({ ...prev, transaction_type: selectedType }));
   }, [selectedType]);
 
   if (loading) return <div>Loading transaction charges...</div>;
@@ -229,14 +342,23 @@ export const TransactionCharges = () => {
                     size="sm"
                     onClick={saveEdit}
                     className="w-fit p-1"
+                    disabled={isEditing}
                   >
-                    <Check className="h-4 w-4 text-green-600" />
+                    {isEditing ? (
+                      <svg className="animate-spin h-4 w-4 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    ) : (
+                      <Check className="h-4 w-4 text-green-600" />
+                    )}
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={cancelEdit}
                     className="w-fit p-1"
+                    disabled={isEditing}
                   >
                     <X className="h-4 w-4 text-red-600" />
                   </Button>
@@ -262,8 +384,16 @@ export const TransactionCharges = () => {
                     size="sm"
                     onClick={() => deleteCharge(charge.id)}
                     className="w-fit p-1"
+                    disabled={isDeleting}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    {isDeleting ? (
+                      <svg className="animate-spin h-4 w-4 text-red-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
                   </Button>
                 </div>
                 <div></div>
@@ -305,8 +435,18 @@ export const TransactionCharges = () => {
                 onChange={(e) => setNewCharge(prev => ({ ...prev, charge_amount: e.target.value }))}
               />
             </div>
-            <Button onClick={addCharge} size="sm">
-              <Plus className="h-4 w-4" />
+            <Button onClick={addCharge} size="sm" disabled={isAdding || loading}>
+              {isAdding ? (
+                <span className="flex items-center">
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Adding...
+                </span>
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
             </Button>
             <div></div>
           </div>

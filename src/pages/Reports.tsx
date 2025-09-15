@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, FileText, Download, BarChart3, TrendingUp, Users, DollarSign } from "lucide-react";
+import ReportScheduler from "@/components/ReportScheduler";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -305,26 +306,7 @@ export default function Reports() {
         </TabsContent>
 
         <TabsContent value="scheduled" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
-                Scheduled Reports
-              </CardTitle>
-              <CardDescription>
-                Set up automated report generation and delivery
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8">
-                <Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Coming Soon</h3>
-                <p className="text-muted-foreground">
-                  Automated report scheduling will be available in a future update.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          <ReportScheduler />
         </TabsContent>
       </Tabs>
     </div>
