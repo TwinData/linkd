@@ -55,17 +55,62 @@ const ClientDetail = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loadingClient, setLoadingClient] = useState(true);
   const [loadingTransactions, setLoadingTransactions] = useState(true);
+  const [loadingSummary, setLoadingSummary] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalTransactions, setTotalTransactions] = useState(0);
+  const [totalAmountKDAll, setTotalAmountKDAll] = useState(0);
+  const [totalPayoutKESAll, setTotalPayoutKESAll] = useState(0);
+  const [totalFeesKESAll, setTotalFeesKESAll] = useState(0);
   const transactionsPerPage = 10;
 
   useEffect(() => {
     if (!loading && !user) navigate("/", { replace: true });
     if (user && clientId) {
       fetchClient();
+      fetchTransactionSummaries();
+    }
+  }, [user, loading, navigate, clientId]);
+  
+  useEffect(() => {
+    if (user && clientId) {
       fetchClientTransactions();
     }
-  }, [user, loading, navigate, clientId, currentPage]);
+  }, [user, clientId, currentPage]);
+  
+  const fetchTransactionSummaries = async () => {
+    if (!clientId) return;
+    
+    setLoadingSummary(true);
+    try {
+      // Fetch aggregated data for all transactions
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('amount_kd, payout_kes, transaction_fee_kes')
+        .eq('client_id', clientId);
+      
+      if (error) throw error;
+      
+      if (data) {
+        // Calculate totals from all transactions
+        const amountKDTotal = data.reduce((sum, t) => sum + (t.amount_kd || 0), 0);
+        const payoutKESTotal = data.reduce((sum, t) => sum + (t.payout_kes || 0), 0);
+        const feesKESTotal = data.reduce((sum, t) => sum + (t.transaction_fee_kes || 0), 0);
+        
+        setTotalAmountKDAll(amountKDTotal);
+        setTotalPayoutKESAll(payoutKESTotal);
+        setTotalFeesKESAll(feesKESTotal);
+      }
+    } catch (error: any) {
+      console.error('Error fetching transaction summaries:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch transaction summaries",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingSummary(false);
+    }
+  };
 
   const fetchClient = async () => {
     if (!clientId) return;
@@ -133,18 +178,6 @@ const ClientDetail = () => {
     }
   };
 
-  const getStatusBadgeVariant = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'default';
-      case 'pending':
-        return 'secondary';
-      case 'failed':
-        return 'destructive';
-      default:
-        return 'outline';
-    }
-  };
 
   if (loading || loadingClient) {
     return (
@@ -174,10 +207,6 @@ const ClientDetail = () => {
   const handleNextPage = () => {
     setCurrentPage(prev => Math.min(prev + 1, totalPages));
   };
-
-  const totalAmountKD = transactions.reduce((sum, t) => sum + (t.amount_kd || 0), 0);
-  const totalPayoutKES = transactions.reduce((sum, t) => sum + (t.payout_kes || 0), 0);
-  const totalFeesKES = transactions.reduce((sum, t) => sum + (t.transaction_fee_kes || 0), 0);
 
   return (
     <div className="min-h-screen bg-background">
@@ -275,6 +304,7 @@ const ClientDetail = () => {
                 <p className="text-sm text-muted-foreground">Total Transactions</p>
               </div>
               <p className="text-2xl font-bold">{totalTransactions}</p>
+              {loadingSummary && <p className="text-xs text-muted-foreground mt-1">Loading...</p>}
             </CardContent>
           </Card>
           
@@ -284,7 +314,8 @@ const ClientDetail = () => {
                 <CreditCard className="w-4 h-4 text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">Total Amount (KD)</p>
               </div>
-              <p className="text-2xl font-bold">{formatCurrency(totalAmountKD, 'KD')}</p>
+              <p className="text-2xl font-bold">{formatCurrency(loadingSummary ? 0 : totalAmountKDAll, 'KD')}</p>
+              {loadingSummary && <p className="text-xs text-muted-foreground mt-1">Loading...</p>}
             </CardContent>
           </Card>
           
@@ -294,7 +325,8 @@ const ClientDetail = () => {
                 <CreditCard className="w-4 h-4 text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">Total Payout (KES)</p>
               </div>
-              <p className="text-2xl font-bold">{formatCurrency(totalPayoutKES, 'KES')}</p>
+              <p className="text-2xl font-bold">{formatCurrency(loadingSummary ? 0 : totalPayoutKESAll, 'KES')}</p>
+              {loadingSummary && <p className="text-xs text-muted-foreground mt-1">Loading...</p>}
             </CardContent>
           </Card>
           
@@ -304,7 +336,8 @@ const ClientDetail = () => {
                 <CreditCard className="w-4 h-4 text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">Total Fees (KES)</p>
               </div>
-              <p className="text-2xl font-bold">{formatCurrency(totalFeesKES, 'KES')}</p>
+              <p className="text-2xl font-bold">{formatCurrency(loadingSummary ? 0 : totalFeesKESAll, 'KES')}</p>
+              {loadingSummary && <p className="text-xs text-muted-foreground mt-1">Loading...</p>}
             </CardContent>
           </Card>
         </div>
@@ -337,7 +370,6 @@ const ClientDetail = () => {
                       <TableHead>Amount (KES)</TableHead>
                       <TableHead>Fee (KES)</TableHead>
                       <TableHead>Payout (KES)</TableHead>
-                      <TableHead>Status</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Date</TableHead>
                       <TableHead>Paid Date</TableHead>
@@ -347,13 +379,9 @@ const ClientDetail = () => {
                     {transactions.map((transaction) => (
                       <TableRow key={transaction.id}>
                         <TableCell>
-                          {transaction.reference ? (
-                            <code className="text-xs bg-muted px-1 py-0.5 rounded">
-                              {transaction.reference}
-                            </code>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
+                          <code className="text-xs bg-muted px-1 py-0.5 rounded">
+                            {transaction.reference || `TX${transaction.id.substring(0, 8)}`}
+                          </code>
                         </TableCell>
                         <TableCell className="font-medium">
                           {formatCurrency(transaction.amount_kd, 'KD')}
@@ -363,11 +391,6 @@ const ClientDetail = () => {
                         <TableCell>{formatCurrency(transaction.transaction_fee_kes, 'KES')}</TableCell>
                         <TableCell className="font-medium">
                           {formatCurrency(transaction.payout_kes, 'KES')}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={getStatusBadgeVariant(transaction.status)}>
-                            {transaction.status}
-                          </Badge>
                         </TableCell>
                         <TableCell>
                           {transaction.type ? (

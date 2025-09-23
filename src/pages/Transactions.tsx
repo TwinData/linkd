@@ -246,7 +246,9 @@ const Transactions = () => {
         transaction_fee_kes: transaction_fee_kes,
         notes: null,
         reference: null,
-        status: "pending" as const
+        status: "pending" as const,
+        // Use the selected date from the form
+        created_at: formData.date.toISOString()
       };
       
       console.log('Creating transaction:', transactionData);
@@ -488,6 +490,16 @@ const Transactions = () => {
             fee = await calculateTransactionFee(amount_kes, transactionType);
           }
           
+          // Check if the CSV has a date field
+          let transactionDate: string | null = null;
+          
+          // Look for date in various possible column names
+          if (txData.date) {
+            transactionDate = txData.date;
+          } else if (txData.transaction_date) {
+            transactionDate = txData.transaction_date;
+          }
+          
           // Create transaction data with required fields
           const transactionData = {
             client_id: client.id,
@@ -499,7 +511,9 @@ const Transactions = () => {
             transaction_fee_kes: fee,
             notes: txData.notes?.trim() || null,
             reference: txData.reference?.trim() || null,
-            status: "pending" as const
+            status: "pending" as const,
+            // Use the date from CSV if available, otherwise use current date
+            created_at: transactionDate || undefined
           };
           
           console.log('Importing transaction:', transactionData);
