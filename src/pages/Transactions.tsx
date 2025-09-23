@@ -246,7 +246,9 @@ const Transactions = () => {
         transaction_fee_kes: transaction_fee_kes,
         notes: null,
         reference: null,
-        status: "pending" as const
+        status: "pending" as const,
+        // Use the selected date from the form
+        created_at: formData.date.toISOString()
       };
       
       console.log('Creating transaction:', transactionData);
