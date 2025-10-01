@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -99,12 +99,16 @@ const Index = () => {
                   <Input id="email" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="password">Password</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">Password</Label>
+                    <Link to="/forgot-password" className="text-xs text-muted-foreground hover:text-foreground">
+                      Forgot password?
+                    </Link>
+                  </div>
                   <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
                 </div>
                 <DialogFooter className="gap-2">
-                  <Button type="button" variant="secondary" onClick={onReset} disabled={!email || loading}>Forgot password</Button>
-                  <Button type="submit" disabled={loading}>{loading ? "Signing in…" : "Sign in"}</Button>
+                  <Button type="submit" disabled={loading} className="w-full">{loading ? "Signing in…" : "Sign in"}</Button>
                 </DialogFooter>
               </form>
             </DialogContent>

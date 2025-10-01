@@ -1,5 +1,5 @@
 import { useLocation, NavLink } from "react-router-dom";
-import { CircleDollarSign, Home, Settings, Users, UserCog, Megaphone, Contact2, FileText, Wallet } from "lucide-react";
+import { CircleDollarSign, Home, Settings, Users, UserCog, Megaphone, Contact2, FileText, Wallet, Shield } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -24,6 +24,7 @@ const mainItems = [
 
 const userMgmt = [
   { title: "Users", url: "/users", icon: Users },
+  { title: "Audit Logs", url: "/audit-logs", icon: Shield },
 ];
 
 export function AppSidebar() {

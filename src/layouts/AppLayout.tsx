@@ -3,12 +3,10 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { useAuth } from "@/context/AuthProvider";
 import { ThemeProvider } from "@/context/ThemeProvider";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
-import { Button } from "@/components/ui/button";
-import { useNavigate } from "react-router-dom";
+import { UserProfileDropdown } from "@/components/UserProfileDropdown";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, signOut } = useAuth();
-  const navigate = useNavigate();
+  const { user } = useAuth();
 
   return (
     <ThemeProvider>
@@ -20,11 +18,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <SidebarTrigger aria-label="Toggle sidebar" />
               <div className="flex-1" />
               <ThemeToggle />
-              {user && (
-                <Button variant="outline" size="sm" onClick={async () => { await signOut(); navigate("/", { replace: true }); }}>
-                  Sign out
-                </Button>
-              )}
+              {user && <UserProfileDropdown />}
             </header>
             <main className="flex-1">
               {children}
