@@ -234,6 +234,9 @@ const Transactions = () => {
       const rate_kes_per_kd = parseFloat(formData.rate_kes_per_kd);
       const transaction_fee_kes = parseFloat(formData.transaction_fee_kes) || 0;
       const amount_kes = amount_kd * rate_kes_per_kd;
+      // payout_kes is calculated by the database trigger, but we include it for clarity
+      // Trigger formula: payout_kes = amount_kes + transaction_fee_kes
+      const payout_kes = amount_kes + transaction_fee_kes;
       
       // Create transaction data with all required fields
       const transactionData = {
@@ -242,6 +245,7 @@ const Transactions = () => {
         amount_kd: amount_kd,
         rate_kes_per_kd: rate_kes_per_kd,
         amount_kes: amount_kes,
+        payout_kes: payout_kes,
         type: formData.type || "M-PESA Send Money",
         transaction_fee_kes: transaction_fee_kes,
         notes: null,
@@ -490,6 +494,9 @@ const Transactions = () => {
             fee = await calculateTransactionFee(amount_kes, transactionType);
           }
           
+          // Calculate payout_kes (amount_kes + fee)
+          const payout_kes = amount_kes + fee;
+          
           // Check if the CSV has a date field
           let transactionDate: string | null = null;
           
@@ -507,6 +514,7 @@ const Transactions = () => {
             amount_kd: amount,
             rate_kes_per_kd: rate,
             amount_kes: amount_kes,
+            payout_kes: payout_kes,
             type: txData.type?.trim() || "M-PESA Send Money",
             transaction_fee_kes: fee,
             notes: txData.notes?.trim() || null,

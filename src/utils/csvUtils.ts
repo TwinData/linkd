@@ -1,7 +1,10 @@
-export const exportToCSV = (data: any[], filename: string) => {
+export const exportToCSV = (data: any[], filename: string, excludeFields: string[] = []) => {
   if (data.length === 0) return;
   
-  const headers = Object.keys(data[0]);
+  // Filter out excluded fields
+  const allHeaders = Object.keys(data[0]);
+  const headers = allHeaders.filter(h => !excludeFields.includes(h));
+  
   const csvContent = [
     headers.join(','),
     ...data.map(row => 
@@ -110,10 +113,33 @@ export const parseCSV = (file: File): Promise<any[]> => {
   });
 };
 
-export const exportToPDF = async (data: any[], title: string) => {
+interface PDFExportOptions {
+  title: string;
+  clientName?: string;
+  reportPeriod?: string;
+  excludeFields?: string[];
+}
+
+export const exportToPDF = async (data: any[], options: PDFExportOptions | string) => {
+  // Handle backward compatibility - if options is a string, treat it as title
+  const { title, clientName, reportPeriod, excludeFields = [] } = 
+    typeof options === 'string' 
+      ? { title: options, excludeFields: [] } 
+      : options;
+
   // Simple PDF export using print dialog
   const printWindow = window.open('', '_blank');
   if (!printWindow) return;
+  
+  // Filter out excluded fields
+  const allKeys = Object.keys(data[0] || {});
+  const filteredKeys = allKeys.filter(key => !excludeFields.includes(key));
+  
+  const today = new Date().toLocaleDateString('en-US', { 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  });
   
   const html = `
     <!DOCTYPE html>
@@ -121,30 +147,118 @@ export const exportToPDF = async (data: any[], title: string) => {
     <head>
       <title>${title}</title>
       <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        h1 { color: #333; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        @media print { body { margin: 0; } }
+        body { 
+          font-family: Arial, sans-serif; 
+          margin: 20px; 
+          color: #333;
+        }
+        .header {
+          text-align: center;
+          margin-bottom: 30px;
+          border-bottom: 3px solid #2563eb;
+          padding-bottom: 20px;
+        }
+        .logo {
+          font-size: 32px;
+          font-weight: bold;
+          color: #2563eb;
+          margin-bottom: 5px;
+        }
+        .tagline {
+          font-size: 14px;
+          color: #666;
+          margin-bottom: 20px;
+        }
+        .report-info {
+          margin: 20px 0;
+          padding: 15px;
+          background: #f8f9fa;
+          border-radius: 5px;
+        }
+        .report-info h2 {
+          margin: 0 0 10px 0;
+          color: #2563eb;
+          font-size: 20px;
+        }
+        .info-item {
+          margin: 5px 0;
+          font-size: 14px;
+        }
+        .info-label {
+          font-weight: bold;
+          color: #555;
+        }
+        h1 { 
+          color: #2563eb; 
+          margin: 0;
+          font-size: 24px;
+        }
+        table { 
+          width: 100%; 
+          border-collapse: collapse; 
+          margin-top: 20px;
+          font-size: 12px;
+        }
+        th, td { 
+          border: 1px solid #ddd; 
+          padding: 10px 8px; 
+          text-align: left; 
+        }
+        th { 
+          background-color: #2563eb; 
+          color: white;
+          font-weight: bold;
+        }
+        tr:nth-child(even) {
+          background-color: #f8f9fa;
+        }
+        .footer {
+          margin-top: 30px;
+          padding-top: 20px;
+          border-top: 2px solid #e5e7eb;
+          text-align: center;
+          font-size: 12px;
+          color: #666;
+        }
+        @media print { 
+          body { margin: 0; padding: 20px; }
+          .header { page-break-after: avoid; }
+        }
       </style>
     </head>
     <body>
-      <h1>${title}</h1>
+      <div class="header">
+        <div class="logo">LinKD</div>
+        <div class="tagline">Kenya-Kuwait Money Transfer Service</div>
+      </div>
+      
+      <div class="report-info">
+        <h2>${title}</h2>
+        ${clientName ? `<div class="info-item"><span class="info-label">Client:</span> ${clientName}</div>` : ''}
+        ${reportPeriod ? `<div class="info-item"><span class="info-label">Period:</span> ${reportPeriod}</div>` : ''}
+        <div class="info-item"><span class="info-label">Generated:</span> ${today}</div>
+        <div class="info-item"><span class="info-label">Total Records:</span> ${data.length}</div>
+      </div>
+      
       <table>
         <thead>
           <tr>
-            ${Object.keys(data[0] || {}).map(key => `<th>${key}</th>`).join('')}
+            ${filteredKeys.map(key => `<th>${key.replace(/_/g, ' ').toUpperCase()}</th>`).join('')}
           </tr>
         </thead>
         <tbody>
           ${data.map(row => `
             <tr>
-              ${Object.values(row).map(value => `<td>${value || ''}</td>`).join('')}
+              ${filteredKeys.map(key => `<td>${row[key] || ''}</td>`).join('')}
             </tr>
           `).join('')}
         </tbody>
       </table>
+      
+      <div class="footer">
+        <div><strong>LinKD</strong> - Reliable & Fast Money Transfer</div>
+        <div>This is a system-generated report</div>
+      </div>
     </body>
     </html>
   `;
