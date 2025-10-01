@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,12 +11,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, User, Phone, Mail, Calendar, CreditCard, StickyNote, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, User, Phone, Mail, Calendar, CreditCard, StickyNote, ChevronLeft, ChevronRight, TrendingUp } from "lucide-react";
 import { useAuth } from "@/context/AuthProvider";
 import { Seo } from "@/components/Seo";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/utils/transactionCharges";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, BarChart, Bar } from "recharts";
 
 interface Client {
   id: string;
@@ -61,6 +63,10 @@ const ClientDetail = () => {
   const [totalAmountKDAll, setTotalAmountKDAll] = useState(0);
   const [totalPayoutKESAll, setTotalPayoutKESAll] = useState(0);
   const [totalFeesKESAll, setTotalFeesKESAll] = useState(0);
+  const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
+  const [thisMonthKWD, setThisMonthKWD] = useState(0);
+  const [thisMonthKES, setThisMonthKES] = useState(0);
+  const [thisMonthCount, setThisMonthCount] = useState(0);
   const transactionsPerPage = 10;
 
   useEffect(() => {
@@ -82,15 +88,18 @@ const ClientDetail = () => {
     
     setLoadingSummary(true);
     try {
-      // Fetch aggregated data for all transactions
+      // Fetch all transactions for this client
       const { data, error } = await supabase
         .from('transactions')
-        .select('amount_kd, payout_kes, transaction_fee_kes')
-        .eq('client_id', clientId);
+        .select('amount_kd, payout_kes, transaction_fee_kes, created_at')
+        .eq('client_id', clientId)
+        .order('created_at', { ascending: false });
       
       if (error) throw error;
       
       if (data) {
+        setAllTransactions(data as Transaction[]);
+        
         // Calculate totals from all transactions
         const amountKDTotal = data.reduce((sum, t) => sum + (t.amount_kd || 0), 0);
         const payoutKESTotal = data.reduce((sum, t) => sum + (t.payout_kes || 0), 0);
@@ -99,6 +108,20 @@ const ClientDetail = () => {
         setTotalAmountKDAll(amountKDTotal);
         setTotalPayoutKESAll(payoutKESTotal);
         setTotalFeesKESAll(feesKESTotal);
+        
+        // Calculate this month's data
+        const now = new Date();
+        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const thisMonthTransactions = data.filter(t => 
+          new Date(t.created_at) >= firstDayOfMonth
+        );
+        
+        const monthKWD = thisMonthTransactions.reduce((sum, t) => sum + (t.amount_kd || 0), 0);
+        const monthKES = thisMonthTransactions.reduce((sum, t) => sum + (t.payout_kes || 0), 0);
+        
+        setThisMonthKWD(monthKWD);
+        setThisMonthKES(monthKES);
+        setThisMonthCount(thisMonthTransactions.length);
       }
     } catch (error: any) {
       console.error('Error fetching transaction summaries:', error);
@@ -178,6 +201,37 @@ const ClientDetail = () => {
     }
   };
 
+  // Calculate chart data for past 6 months
+  const chartData = useMemo(() => {
+    if (allTransactions.length === 0) return [];
+
+    const last6Months = Array.from({ length: 6 }, (_, i) => {
+      const date = new Date();
+      date.setMonth(date.getMonth() - (5 - i));
+      date.setDate(1);
+      return date;
+    });
+
+    return last6Months.map(date => {
+      const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
+      const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
+
+      const monthTransactions = allTransactions.filter(t => {
+        const tDate = new Date(t.created_at);
+        return tDate >= monthStart && tDate <= monthEnd;
+      });
+
+      const totalKWD = monthTransactions.reduce((sum, t) => sum + (t.amount_kd || 0), 0);
+      const totalKES = monthTransactions.reduce((sum, t) => sum + (t.payout_kes || 0), 0);
+
+      return {
+        month: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+        transactions: monthTransactions.length,
+        totalKWD: Math.round(totalKWD * 100) / 100,
+        totalKES: Math.round(totalKES)
+      };
+    });
+  }, [allTransactions]);
 
   if (loading || loadingClient) {
     return (
@@ -295,49 +349,170 @@ const ClientDetail = () => {
           </CardContent>
         </Card>
 
-        {/* Transaction Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* All-Time Transaction Summary */}
+        <div>
+          <h2 className="text-lg font-medium text-foreground mb-4">All-Time Summary</h2>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center gap-2">
+                  <CreditCard className="w-4 h-4 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Total Transactions</p>
+                </div>
+                <p className="text-2xl font-bold">{totalTransactions}</p>
+                {loadingSummary && <p className="text-xs text-muted-foreground mt-1">Loading...</p>}
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center gap-2">
+                  <CreditCard className="w-4 h-4 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Total Amount (KD)</p>
+                </div>
+                <p className="text-2xl font-bold">{formatCurrency(loadingSummary ? 0 : totalAmountKDAll, 'KD')}</p>
+                {loadingSummary && <p className="text-xs text-muted-foreground mt-1">Loading...</p>}
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center gap-2">
+                  <CreditCard className="w-4 h-4 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Total Payout (KES)</p>
+                </div>
+                <p className="text-2xl font-bold">{formatCurrency(loadingSummary ? 0 : totalPayoutKESAll, 'KES')}</p>
+                {loadingSummary && <p className="text-xs text-muted-foreground mt-1">Loading...</p>}
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center gap-2">
+                  <CreditCard className="w-4 h-4 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Total Fees (KES)</p>
+                </div>
+                <p className="text-2xl font-bold">{formatCurrency(loadingSummary ? 0 : totalFeesKESAll, 'KES')}</p>
+                {loadingSummary && <p className="text-xs text-muted-foreground mt-1">Loading...</p>}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* This Month Summary */}
+        <div>
+          <h2 className="text-lg font-medium text-foreground mb-4">This Month</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Transactions This Month</p>
+                </div>
+                <p className="text-2xl font-bold">{thisMonthCount}</p>
+                {loadingSummary && <p className="text-xs text-muted-foreground mt-1">Loading...</p>}
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">This Month (KWD)</p>
+                </div>
+                <p className="text-2xl font-bold">{formatCurrency(loadingSummary ? 0 : thisMonthKWD, 'KD')}</p>
+                {loadingSummary && <p className="text-xs text-muted-foreground mt-1">Loading...</p>}
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">This Month (KES)</p>
+                </div>
+                <p className="text-2xl font-bold">{formatCurrency(loadingSummary ? 0 : thisMonthKES, 'KES')}</p>
+                {loadingSummary && <p className="text-xs text-muted-foreground mt-1">Loading...</p>}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* Transaction Trends Chart */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">Total Transactions</p>
+            <CardHeader>
+              <CardTitle>Transaction Volume (Last 6 Months)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="w-full h-[300px]">
+                {chartData.length > 0 ? (
+                  <ChartContainer
+                    config={{
+                      transactions: {
+                        label: "Transactions",
+                        color: "hsl(var(--primary))",
+                      },
+                    }}
+                    className="w-full h-full"
+                  >
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="month" />
+                        <YAxis />
+                        <ChartTooltip content={<ChartTooltipContent />} />
+                        <Bar dataKey="transactions" fill="hsl(var(--primary))" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </ChartContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    No transaction data available
+                  </div>
+                )}
               </div>
-              <p className="text-2xl font-bold">{totalTransactions}</p>
-              {loadingSummary && <p className="text-xs text-muted-foreground mt-1">Loading...</p>}
             </CardContent>
           </Card>
-          
+
           <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">Total Amount (KD)</p>
+            <CardHeader>
+              <CardTitle>Amount Trends (KWD)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="w-full h-[300px]">
+                {chartData.length > 0 ? (
+                  <ChartContainer
+                    config={{
+                      totalKWD: {
+                        label: "Amount (KWD)",
+                        color: "hsl(120 60% 50%)",
+                      },
+                    }}
+                    className="w-full h-full"
+                  >
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="month" />
+                        <YAxis />
+                        <ChartTooltip content={<ChartTooltipContent />} />
+                        <Line 
+                          type="monotone" 
+                          dataKey="totalKWD" 
+                          stroke="hsl(120 60% 50%)" 
+                          strokeWidth={2}
+                          dot={{ fill: "hsl(120 60% 50%)" }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </ChartContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    No transaction data available
+                  </div>
+                )}
               </div>
-              <p className="text-2xl font-bold">{formatCurrency(loadingSummary ? 0 : totalAmountKDAll, 'KD')}</p>
-              {loadingSummary && <p className="text-xs text-muted-foreground mt-1">Loading...</p>}
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">Total Payout (KES)</p>
-              </div>
-              <p className="text-2xl font-bold">{formatCurrency(loadingSummary ? 0 : totalPayoutKESAll, 'KES')}</p>
-              {loadingSummary && <p className="text-xs text-muted-foreground mt-1">Loading...</p>}
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">Total Fees (KES)</p>
-              </div>
-              <p className="text-2xl font-bold">{formatCurrency(loadingSummary ? 0 : totalFeesKESAll, 'KES')}</p>
-              {loadingSummary && <p className="text-xs text-muted-foreground mt-1">Loading...</p>}
             </CardContent>
           </Card>
         </div>

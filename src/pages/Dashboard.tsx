@@ -81,6 +81,24 @@ const Dashboard = () => {
       setFetching(false);
     };
     loadData();
+
+    // Set up realtime subscription for transactions
+    const transactionsChannel = supabase
+      .channel('dashboard-transactions')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'transactions' },
+        async (payload) => {
+          console.log('Transaction change detected:', payload);
+          // Reload transactions when any change occurs
+          const { data } = await supabase.from("transactions").select("*").order("created_at", { ascending: false });
+          setTransactions(data || []);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(transactionsChannel);
+    };
   }, [user, loading]);
 
   const analytics = useMemo(() => {
@@ -111,26 +129,40 @@ const Dashboard = () => {
       return date > sixtyDaysAgo && date <= thirtyDaysAgo;
     });
     
-    // Calculations
-    const totalKES = transactions.reduce((sum, t) => sum + Number(t.payout_kes || 0), 0);
-    const totalKWD = transactions.reduce((sum, t) => sum + Number(t.amount_kd || 0), 0);
+    // Calculations - using parseFloat to handle all numeric values properly
+    const totalKES = transactions.reduce((sum, t) => sum + (parseFloat(String(t.payout_kes)) || 0), 0);
+    const totalKWD = transactions.reduce((sum, t) => sum + (parseFloat(String(t.amount_kd)) || 0), 0);
     const avgRate = transactions.length > 0 ? 
-      transactions.reduce((sum, t) => sum + Number(t.rate_kes_per_kd || 0), 0) / transactions.length : 0;
+      transactions.reduce((sum, t) => sum + (parseFloat(String(t.rate_kes_per_kd)) || 0), 0) / transactions.length : 0;
     
-    const todayKES = todayTransactions.reduce((sum, t) => sum + Number(t.payout_kes || 0), 0);
-    const todayKWD = todayTransactions.reduce((sum, t) => sum + Number(t.amount_kd || 0), 0);
+    // Debug logging to help track calculation issues
+    console.log('Dashboard Analytics:', {
+      transactionCount: transactions.length,
+      totalKWD,
+      totalKES,
+      avgRate,
+      sampleTransactions: transactions.slice(0, 3).map(t => ({
+        id: t.id,
+        amount_kd: t.amount_kd,
+        payout_kes: t.payout_kes,
+        created_at: t.created_at
+      }))
+    });
+    
+    const todayKES = todayTransactions.reduce((sum, t) => sum + (parseFloat(String(t.payout_kes)) || 0), 0);
+    const todayKWD = todayTransactions.reduce((sum, t) => sum + (parseFloat(String(t.amount_kd)) || 0), 0);
     
     // Float deposits analytics
-    const totalFloatKD = floatDeposits.reduce((sum, f) => sum + Number(f.total_kd || 0), 0);
-    const totalFloatKES = floatDeposits.reduce((sum, f) => sum + Number(f.total_kes || 0), 0);
-    const totalProfit = floatDeposits.reduce((sum, f) => sum + Number(f.profit || 0), 0);
+    const totalFloatKD = floatDeposits.reduce((sum, f) => sum + (parseFloat(String(f.total_kd)) || 0), 0);
+    const totalFloatKES = floatDeposits.reduce((sum, f) => sum + (parseFloat(String(f.total_kes)) || 0), 0);
+    const totalProfit = floatDeposits.reduce((sum, f) => sum + (parseFloat(String(f.profit)) || 0), 0);
     
     // Active promotions
     const activePromotions = promotions.filter(p => p.active).length;
     
     // Trends calculation
-    const currentMonthVolume = recentTransactions.reduce((sum, t) => sum + Number(t.amount_kd || 0), 0);
-    const previousMonthVolume = previousTransactions.reduce((sum, t) => sum + Number(t.amount_kd || 0), 0);
+    const currentMonthVolume = recentTransactions.reduce((sum, t) => sum + (parseFloat(String(t.amount_kd)) || 0), 0);
+    const previousMonthVolume = previousTransactions.reduce((sum, t) => sum + (parseFloat(String(t.amount_kd)) || 0), 0);
     const volumeTrend = previousMonthVolume > 0 ? 
       ((currentMonthVolume - previousMonthVolume) / previousMonthVolume) * 100 : 0;
     
@@ -174,7 +206,7 @@ const Dashboard = () => {
         return tDate >= monthStart && tDate <= monthEnd;
       });
       
-      const volume = monthTransactions.reduce((sum, t) => sum + Number(t.amount_kd || 0), 0);
+      const volume = monthTransactions.reduce((sum, t) => sum + (parseFloat(String(t.amount_kd)) || 0), 0);
       
       return {
         month: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
@@ -195,7 +227,7 @@ const Dashboard = () => {
     
     const amountData = amountRanges.map(range => {
       const count = transactions.filter(t => {
-        const amount = Number(t.amount_kd || 0);
+        const amount = parseFloat(String(t.amount_kd)) || 0;
         if (range.name === 'Other') {
           return amount < 9 || (amount > 11 && amount < 24) || (amount > 26 && amount < 49) || (amount > 51 && amount < 99) || (amount > 101 && amount < 200);
         }
@@ -231,7 +263,7 @@ const Dashboard = () => {
       });
       
       const avgAmount = monthTransactions.length > 0 
-        ? monthTransactions.reduce((sum, t) => sum + Number(t.amount_kd || 0), 0) / monthTransactions.length
+        ? monthTransactions.reduce((sum, t) => sum + (parseFloat(String(t.amount_kd)) || 0), 0) / monthTransactions.length
         : 0;
       
       return {
@@ -248,9 +280,9 @@ const Dashboard = () => {
       ...transactions.slice(0, 5).map(t => ({
         type: 'transaction',
         id: t.id,
-        description: `Transaction of ${Number(t.amount_kd || 0).toFixed(2)} KWD`,
+        description: `Transaction of ${(parseFloat(String(t.amount_kd)) || 0).toFixed(2)} KWD`,
         date: t.created_at,
-        amount: `${Number(t.payout_kes || 0).toLocaleString()} KES`
+        amount: `${(parseFloat(String(t.payout_kes)) || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })} KES`
       })),
       ...clients.slice(0, 3).map(c => ({
         type: 'client',
@@ -295,7 +327,7 @@ const Dashboard = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard 
               title="Transacted Today" 
-              value={`${analytics.todayKWD.toFixed(2)} KWD`}
+              value={`${analytics.todayKWD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} KWD`}
               icon={<DollarSign className="h-4 w-4" />}
             />
             <StatCard 
@@ -321,12 +353,12 @@ const Dashboard = () => {
         <section aria-labelledby="detailed-stats" className="space-y-4">
           <h2 id="detailed-stats" className="text-lg font-medium text-foreground">Financial Overview</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <StatCard title="Total KES Processed" value={`${analytics.totalKES.toLocaleString()} KES`} />
-            <StatCard title="Total KWD Processed" value={`${analytics.totalKWD.toFixed(2)} KWD`} />
-            <StatCard title="Average Rate" value={`${analytics.avgRate.toFixed(2)} KES/KWD`} />
-            <StatCard title="Float Deposits (KD)" value={`${analytics.totalFloatKD.toFixed(2)} KD`} />
-            <StatCard title="Float Deposits (KES)" value={`${analytics.totalFloatKES.toLocaleString()} KES`} />
-            <StatCard title="Total Profit" value={`${analytics.totalProfit.toLocaleString()} KES`} />
+            <StatCard title="Total KES Processed" value={`${analytics.totalKES.toLocaleString('en-US', { maximumFractionDigits: 2 })} KES`} />
+            <StatCard title="Total KWD Processed" value={`${analytics.totalKWD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} KWD`} />
+            <StatCard title="Average Rate" value={`${analytics.avgRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} KES/KWD`} />
+            <StatCard title="Float Deposits (KD)" value={`${analytics.totalFloatKD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} KD`} />
+            <StatCard title="Float Deposits (KES)" value={`${analytics.totalFloatKES.toLocaleString('en-US', { maximumFractionDigits: 2 })} KES`} />
+            <StatCard title="Total Profit" value={`${analytics.totalProfit.toLocaleString('en-US', { maximumFractionDigits: 2 })} KES`} />
           </div>
         </section>
 
@@ -543,36 +575,6 @@ const Dashboard = () => {
               </div>
             </CardContent>
           </Card>
-        </section>
-
-        <section aria-labelledby="quick-actions" className="space-y-4">
-          <h2 id="quick-actions" className="text-lg font-medium text-foreground">Quick Actions</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Button variant="outline" className="h-20" onClick={() => navigate("/clients")}>
-              <div className="text-center">
-                <div className="font-medium">Clients</div>
-                <div className="text-sm text-muted-foreground">Manage client records</div>
-              </div>
-            </Button>
-            <Button variant="outline" className="h-20" onClick={() => navigate("/transactions")}>
-              <div className="text-center">
-                <div className="font-medium">Transactions</div>
-                <div className="text-sm text-muted-foreground">Process exchanges</div>
-              </div>
-            </Button>
-            <Button variant="outline" className="h-20" onClick={() => navigate("/users")}>
-              <div className="text-center">
-                <div className="font-medium">Users</div>
-                <div className="text-sm text-muted-foreground">Manage access</div>
-              </div>
-            </Button>
-            <Button variant="outline" className="h-20" onClick={() => navigate("/settings")}>
-              <div className="text-center">
-                <div className="font-medium">Settings</div>
-                <div className="text-sm text-muted-foreground">App configuration</div>
-              </div>
-            </Button>
-          </div>
         </section>
       </main>
     </div>
