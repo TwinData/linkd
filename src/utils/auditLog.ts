@@ -28,7 +28,7 @@ interface AuditLogParams {
 }
 
 /**
- * Logs an audit trail entry
+ * Logs an audit trail entry (non-blocking - never throws errors)
  */
 export async function logAudit({
   action,
@@ -37,6 +37,7 @@ export async function logAudit({
   oldValues,
   newValues,
 }: AuditLogParams): Promise<void> {
+  // Fire and forget - don't let audit logging block critical operations
   try {
     const { data: { user } } = await supabase.auth.getUser();
     
@@ -54,10 +55,12 @@ export async function logAudit({
     });
 
     if (error) {
-      console.error("Failed to log audit:", error);
+      // Just log to console, don't throw - audit logs are supplementary
+      console.warn("Failed to log audit (non-critical):", error.message);
     }
-  } catch (error) {
-    console.error("Error logging audit:", error);
+  } catch (error: any) {
+    // Silently fail - audit logging should never break the app
+    console.warn("Error logging audit (non-critical):", error?.message);
   }
 }
 

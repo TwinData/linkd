@@ -25,17 +25,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
     init();
 
-    const { data: sub } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
       
-      // Log authentication events
+      // Log authentication events (fire and forget - don't block auth flow)
       if (event === 'SIGNED_IN' && session?.user) {
-        await logUserAction('LOGIN', session.user.id, {
+        logUserAction('LOGIN', session.user.id, {
           email: session.user.email,
           timestamp: new Date().toISOString(),
-        });
+        }).catch(err => console.warn('Failed to log login:', err));
       } else if (event === 'SIGNED_OUT') {
-        await logUserAction('LOGOUT');
+        logUserAction('LOGOUT').catch(err => console.warn('Failed to log logout:', err));
       }
     });
 
@@ -46,11 +46,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const signOut = async () => {
-    // Log logout before signing out
-    await logUserAction('LOGOUT', user?.id, {
+    // Log logout before signing out (don't await - fire and forget)
+    logUserAction('LOGOUT', user?.id, {
       email: user?.email,
       timestamp: new Date().toISOString(),
-    });
+    }).catch(err => console.warn('Failed to log logout:', err));
+    
     await supabase.auth.signOut();
   };
 
