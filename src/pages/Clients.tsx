@@ -184,12 +184,12 @@ const Clients = () => {
         throw error;
       }
 
-      // Log audit trail
+      // Log audit trail (fire and forget)
       if (newClient) {
-        await logClientCreate(newClient.id, {
+        logClientCreate(newClient.id, {
           name: newClient.name,
           phone: newClient.phone,
-        });
+        }).catch(err => console.warn('Failed to log client create:', err));
       }
 
       toast({ title: "Success", description: "Client created successfully" });
@@ -236,8 +236,9 @@ const Clients = () => {
 
       if (error) throw error;
 
-      // Log audit trail
-      await logClientUpdate(editingClient.id, oldValues, newValues);
+      // Log audit trail (fire and forget)
+      logClientUpdate(editingClient.id, oldValues, newValues)
+        .catch(err => console.warn('Failed to log client update:', err));
 
       toast({ title: "Success", description: "Client updated successfully" });
       setOpenEdit(false);
@@ -265,12 +266,12 @@ const Clients = () => {
       const { error } = await supabase.from("clients").delete().eq('id', id);
       if (error) throw error;
 
-      // Log audit trail
+      // Log audit trail (fire and forget)
       if (clientToDelete) {
-        await logClientDelete(id, {
+        logClientDelete(id, {
           name: clientToDelete.name,
           phone: clientToDelete.phone,
-        });
+        }).catch(err => console.warn('Failed to log client delete:', err));
       }
 
       toast({ title: "Success", description: "Client deleted successfully" });

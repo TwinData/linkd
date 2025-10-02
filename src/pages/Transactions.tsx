@@ -261,14 +261,14 @@ const Transactions = () => {
 
       if (error) throw error;
 
-      // Log audit trail
+      // Log audit trail (fire and forget - don't block UI)
       if (newTransaction) {
-        await logTransactionCreate(newTransaction.id, {
+        logTransactionCreate(newTransaction.id, {
           amount_kd: newTransaction.amount_kd,
           amount_kes: newTransaction.amount_kes,
           client_id: newTransaction.client_id,
           payout_kes: newTransaction.payout_kes,
-        });
+        }).catch(err => console.warn('Failed to log transaction create:', err));
       }
 
       toast({ title: "Success", description: "Transaction created successfully" });
@@ -333,8 +333,9 @@ const Transactions = () => {
 
       if (error) throw error;
 
-      // Log audit trail
-      await logTransactionUpdate(editingTransaction.id, oldValues, newValues);
+      // Log audit trail (fire and forget)
+      logTransactionUpdate(editingTransaction.id, oldValues, newValues)
+        .catch(err => console.warn('Failed to log transaction update:', err));
 
       toast({ title: "Success", description: "Transaction updated successfully" });
       setOpenEdit(false);
@@ -361,14 +362,14 @@ const Transactions = () => {
       const { error } = await supabase.from("transactions").delete().eq('id', id);
       if (error) throw error;
 
-      // Log audit trail
+      // Log audit trail (fire and forget)
       if (transactionToDelete) {
-        await logTransactionDelete(id, {
+        logTransactionDelete(id, {
           amount_kd: transactionToDelete.amount_kd,
           amount_kes: transactionToDelete.amount_kes,
           client_id: transactionToDelete.client_id,
           payout_kes: transactionToDelete.payout_kes,
-        });
+        }).catch(err => console.warn('Failed to log transaction delete:', err));
       }
 
       toast({ title: "Success", description: "Transaction deleted successfully" });
