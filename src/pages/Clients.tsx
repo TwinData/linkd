@@ -22,6 +22,7 @@ import { exportToCSV, parseCSV, exportToPDF } from "@/utils/csvUtils";
 import { FileUpload, FileOperationButton } from "@/components/ui/file-upload";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
+import { logClientCreate, logClientUpdate, logClientDelete } from "@/utils/auditLog";
 
 const formatCurrency = (value: number | null | undefined, currency: string) => {
   const num = typeof value === "number" ? value : 0;
@@ -176,11 +177,19 @@ const Clients = () => {
       console.log('Creating client:', clientData);
       
       // Try direct insert
-      const { error } = await supabase.from("clients").insert(clientData);
+      const { data: newClient, error } = await supabase.from("clients").insert(clientData).select().single();
 
       if (error) {
         console.error('Error creating client:', error);
         throw error;
+      }
+
+      // Log audit trail
+      if (newClient) {
+        await logClientCreate(newClient.id, {
+          name: newClient.name,
+          phone: newClient.phone,
+        });
       }
 
       toast({ title: "Success", description: "Client created successfully" });
@@ -212,12 +221,23 @@ const Clients = () => {
     }
 
     try {
-      const { error } = await supabase.from("clients").update({
+      // Store old values for audit
+      const oldValues = {
+        name: editingClient.name,
+        phone: editingClient.phone,
+      };
+
+      const newValues = {
         name: formData.name.trim(),
-        phone: formData.phone.trim() || null
-      }).eq('id', editingClient.id);
+        phone: formData.phone.trim() || null,
+      };
+
+      const { error } = await supabase.from("clients").update(newValues).eq('id', editingClient.id);
 
       if (error) throw error;
+
+      // Log audit trail
+      await logClientUpdate(editingClient.id, oldValues, newValues);
 
       toast({ title: "Success", description: "Client updated successfully" });
       setOpenEdit(false);
@@ -236,11 +256,22 @@ const Clients = () => {
     if (!confirm("Are you sure you want to delete this client? This will also delete all their transactions.")) return;
     
     try {
+      // Get client data before deleting for audit
+      const clientToDelete = clients.find(c => c.id === id);
+      
       // Delete transactions first
       await supabase.from("transactions").delete().eq('client_id', id);
       // Then delete client
       const { error } = await supabase.from("clients").delete().eq('id', id);
       if (error) throw error;
+
+      // Log audit trail
+      if (clientToDelete) {
+        await logClientDelete(id, {
+          name: clientToDelete.name,
+          phone: clientToDelete.phone,
+        });
+      }
 
       toast({ title: "Success", description: "Client deleted successfully" });
       
