@@ -23,6 +23,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { logTransactionCreate, logTransactionUpdate, logTransactionDelete } from "@/utils/auditLog";
 
 // Simple currency formatter
 const formatCurrency = (value: number | null | undefined, currency: string) => {
@@ -256,9 +257,19 @@ const Transactions = () => {
       };
       
       console.log('Creating transaction:', transactionData);
-      const { error } = await supabase.from("transactions").insert(transactionData);
+      const { data: newTransaction, error } = await supabase.from("transactions").insert(transactionData).select().single();
 
       if (error) throw error;
+
+      // Log audit trail
+      if (newTransaction) {
+        await logTransactionCreate(newTransaction.id, {
+          amount_kd: newTransaction.amount_kd,
+          amount_kes: newTransaction.amount_kes,
+          client_id: newTransaction.client_id,
+          payout_kes: newTransaction.payout_kes,
+        });
+      }
 
       toast({ title: "Success", description: "Transaction created successfully" });
       setOpenAdd(false);
@@ -296,18 +307,34 @@ const Transactions = () => {
     const { finalPayout } = calculatePayout();
     
     try {
-      const { error } = await supabase.from("transactions").update({
+      // Store old values for audit
+      const oldValues = {
+        client_id: editingTransaction.client_id,
+        amount_kd: editingTransaction.amount_kd,
+        rate_kes_per_kd: editingTransaction.rate_kes_per_kd,
+        amount_kes: editingTransaction.amount_kes,
+        payout_kes: editingTransaction.payout_kes,
+      };
+
+      const newValues = {
         client_id: selectedClient,
         amount_kd: parseFloat(formData.amount_kd),
         rate_kes_per_kd: parseFloat(formData.rate_kes_per_kd),
         amount_kes: parseFloat(formData.amount_kd) * parseFloat(formData.rate_kes_per_kd),
+        payout_kes: finalPayout,
+      };
+
+      const { error } = await supabase.from("transactions").update({
+        ...newValues,
         type: formData.type,
         transaction_fee_kes: parseFloat(formData.transaction_fee_kes) || 0,
-        payout_kes: finalPayout,
         created_at: formData.date.toISOString()
       }).eq('id', editingTransaction.id);
 
       if (error) throw error;
+
+      // Log audit trail
+      await logTransactionUpdate(editingTransaction.id, oldValues, newValues);
 
       toast({ title: "Success", description: "Transaction updated successfully" });
       setOpenEdit(false);
@@ -328,8 +355,21 @@ const Transactions = () => {
     if (!confirm("Are you sure you want to delete this transaction?")) return;
     
     try {
+      // Get transaction data before deleting for audit
+      const transactionToDelete = txs.find(tx => tx.id === id);
+      
       const { error } = await supabase.from("transactions").delete().eq('id', id);
       if (error) throw error;
+
+      // Log audit trail
+      if (transactionToDelete) {
+        await logTransactionDelete(id, {
+          amount_kd: transactionToDelete.amount_kd,
+          amount_kes: transactionToDelete.amount_kes,
+          client_id: transactionToDelete.client_id,
+          payout_kes: transactionToDelete.payout_kes,
+        });
+      }
 
       toast({ title: "Success", description: "Transaction deleted successfully" });
       

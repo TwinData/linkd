@@ -165,3 +165,85 @@ export async function logReportExport(reportType: string, format: string) {
     newValues: { reportType, format },
   });
 }
+
+/**
+ * Helper function to log float deposit creation
+ */
+export async function logFloatDepositCreate(depositId: string, data: Record<string, any>) {
+  await logAudit({
+    action: "CREATE",
+    entityType: "float_deposit",
+    entityId: depositId,
+    newValues: data,
+  });
+}
+
+/**
+ * Helper function to log float deposit update
+ */
+export async function logFloatDepositUpdate(
+  depositId: string,
+  oldData: Record<string, any>,
+  newData: Record<string, any>
+) {
+  await logAudit({
+    action: "UPDATE",
+    entityType: "float_deposit",
+    entityId: depositId,
+    oldValues: oldData,
+    newValues: newData,
+  });
+}
+
+/**
+ * Helper function to log float deposit deletion
+ */
+export async function logFloatDepositDelete(depositId: string, data: Record<string, any>) {
+  await logAudit({
+    action: "DELETE",
+    entityType: "float_deposit",
+    entityId: depositId,
+    oldValues: data,
+  });
+}
+
+/**
+ * Helper function to log promotion creation
+ */
+export async function logPromotionCreate(promotionId: string, data: Record<string, any>) {
+  await logAudit({
+    action: "CREATE",
+    entityType: "promotion",
+    entityId: promotionId,
+    newValues: data,
+  });
+}
+
+/**
+ * Helper function to log promotion update
+ */
+export async function logPromotionUpdate(
+  promotionId: string,
+  oldData: Record<string, any>,
+  newData: Record<string, any>
+) {
+  await logAudit({
+    action: "UPDATE",
+    entityType: "promotion",
+    entityId: promotionId,
+    oldValues: oldData,
+    newValues: newData,
+  });
+}
+
+/**
+ * Helper function to log promotion deletion
+ */
+export async function logPromotionDelete(promotionId: string, data: Record<string, any>) {
+  await logAudit({
+    action: "DELETE",
+    entityType: "promotion",
+    entityId: promotionId,
+    oldValues: data,
+  });
+}
